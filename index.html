@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>在庫管理システム</title>
+  <!-- Google Fonts: Roboto -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    /* カラーパレット（東京ガスカラー＋削除アクション用の赤） */
+    :root {
+      --primary-color: #003087;      /* 東京ガスブルー */
+      --primary-hover: #002060;       /* ホバー用：少しダーク */
+      --bg-color: #f4f6f8;
+      --card-bg: #ffffff;
+      --border-color: #bdc3c7;
+      --text-color: #2c3e50;
+      --toggle-show: #003087;         
+      --toggle-hide: #0056b3;         
+      --danger-color: #e74c3c;       /* 削除用の赤 */
+      --danger-hover: #c0392b;
+    }
+    /* 全体の基本設定 */
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Roboto', sans-serif;
+      background: var(--bg-color);
+      margin: 0;
+      padding: 0 15px;
+      color: var(--text-color);
+    }
+    h1 {
+      text-align: center;
+      margin: 30px 0;
+      font-weight: 700;
+      color: var(--primary-color);
+    }
+    h2 {
+      margin-top: 0;
+      font-weight: 500;
+      color: var(--primary-color);
+    }
+    /* 在庫数表示 */
+    .inventory-section {
+      text-align: center;
+      padding: 20px;
+      background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+      border-radius: 8px;
+      color: #fff;
+      margin-bottom: 30px;
+    }
+    .inventory-count {
+      font-size: 3em;
+      font-weight: bold;
+    }
+    /* セクションカード風 */
+    .form-section {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    /* フォームラベル */
+    label {
+      display: inline-block;
+      width: 150px;
+      font-weight: 500;
+      margin-bottom: 5px;
+      color: var(--text-color);
+    }
+    input, select {
+      padding: 8px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      font-size: 0.95em;
+      margin-bottom: 10px;
+      width: calc(100% - 160px);
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--primary-color);
+    }
+    /* 共通ボタン */
+    .btn {
+      background: var(--primary-color);
+      border: none;
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 1em;
+      transition: background 0.3s, box-shadow 0.3s;
+      margin: 5px 0;
+    }
+    .btn:hover {
+      background: var(--primary-hover);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    }
+    /* 危険（削除）ボタン */
+    .btn-danger {
+      background: var(--danger-color);
+    }
+    .btn-danger:hover {
+      background: var(--danger-hover);
+    }
+    /* テーブル */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+    table th, table td {
+      border: 1px solid var(--border-color);
+      padding: 10px;
+      text-align: center;
+    }
+    table th {
+      background: var(--primary-color);
+      color: #fff;
+    }
+    /* トグルボタン（表示/非表示） */
+    .toggle-btn {
+      background: var(--toggle-hide);
+    }
+    /* 非表示セクション */
+    #groupManagementSection,
+    #itemManagementSection,
+    #inventoryInitialSection,
+    #deletionHistorySection {
+      display: none;
+    }
+    /* 削除履歴セクション */
+    #deletionHistorySection {
+      background: linear-gradient(135deg, #ecf0f1, #d0dce3);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+  </style>
+  <!-- SheetJS CDN（Excel出力用） -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+  <h1>在庫管理システム</h1>
+  
+  <!-- 在庫数表示 -->
+  <div class="inventory-section">
+    <div>現在の在庫数</div>
+    <div id="inventoryCount" class="inventory-count">0</div>
+  </div>
+  
+  <!-- 管理対象アイテム選択 -->
+  <div class="form-section">
+    <label for="itemSelect">管理対象アイテム:</label>
+    <select id="itemSelect">
+      <!-- オプションはJSで生成 -->
+    </select>
+  </div>
+  
+  <!-- 管理対象アイテム管理 -->
+  <div class="form-section">
+    <button id="toggleItemManagement" class="btn toggle-btn">管理対象アイテム管理を表示</button>
+  </div>
+  <div id="itemManagementSection" class="form-section">
+    <h2>管理対象アイテム管理</h2>
+    <form id="manageItemsForm">
+      <div>
+        <label for="newItemName">新規アイテム:</label>
+        <input type="text" id="newItemName" required>
+      </div>
+      <div>
+        <button type="submit" class="btn">アイテム追加</button>
+      </div>
+    </form>
+    <table class="item-table">
+      <thead>
+        <tr>
+          <th>アイテム名</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="itemList"></tbody>
+    </table>
+  </div>
+  
+  <!-- 在庫初期設定（管理者専用） -->
+  <div class="form-section">
+    <button id="toggleInventoryInitial" class="btn toggle-btn">在庫初期設定を表示</button>
+  </div>
+  <div id="inventoryInitialSection" class="form-section">
+    <h2>在庫初期設定（管理者専用）</h2>
+    <form id="setInventoryForm">
+      <div>
+        <label for="initialInventory">在庫数:</label>
+        <input type="number" id="initialInventory" min="0" value="0" required>
+      </div>
+      <div>
+        <button type="submit" class="btn">在庫を設定</button>
+      </div>
+    </form>
+  </div>
+  
+  <!-- 班名管理 -->
+  <div class="form-section">
+    <button id="toggleGroupManagement" class="btn toggle-btn">班名管理を表示</button>
+  </div>
+  <div id="groupManagementSection" class="form-section">
+    <h2>班名管理</h2>
+    <form id="addGroupForm">
+      <div>
+        <label for="newGroupName">新規班名:</label>
+        <input type="text" id="newGroupName" required>
+      </div>
+      <div>
+        <button type="submit" class="btn">班名を追加</button>
+      </div>
+    </form>
+    <table class="group-table">
+      <thead>
+        <tr>
+          <th>班名</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="groupList"></tbody>
+    </table>
+  </div>
+  
+  <!-- 在庫入荷 -->
+  <div class="form-section">
+    <h2>在庫入荷情報入力</h2>
+    <form id="restockForm">
+      <div>
+        <label for="restockAmount">入荷数:</label>
+        <input type="number" id="restockAmount" min="1" value="1" required>
+      </div>
+      <div>
+        <label for="restockDate">入荷日:</label>
+        <input type="date" id="restockDate" required>
+      </div>
+      <div>
+        <button type="submit" class="btn">在庫に追加</button>
+      </div>
+    </form>
+  </div>
+  
+  <!-- 持ち出し -->
+  <div class="form-section">
+    <h2>持ち出し情報入力</h2>
+    <form id="checkoutForm">
+      <div>
+        <label for="groupSelect">持ち出した班の名前:</label>
+        <select id="groupSelect" required></select>
+      </div>
+      <div>
+        <label for="checkoutDate">持ち出し日:</label>
+        <input type="date" id="checkoutDate" required>
+      </div>
+      <div>
+        <label for="checkoutAmount">数量:</label>
+        <input type="number" id="checkoutAmount" min="1" value="1" required>
+      </div>
+      <div>
+        <button type="submit" class="btn">在庫から持ち出す</button>
+      </div>
+    </form>
+  </div>
+  
+  <!-- 取引履歴＆Excel出力（シート分割出力） -->
+  <div class="form-section">
+    <h2>取引履歴</h2>
+    <button id="exportExcel" class="btn">履歴（取引+削除）CSV抽出</button>
+    <table class="transaction-table">
+      <thead>
+        <tr>
+          <th>取引種別</th>
+          <th>日付</th>
+          <th>班の名前</th>
+          <th>数量</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="transactionBody"></tbody>
+    </table>
+  </div>
+  
+  <!-- 削除履歴表示 -->
+  <div class="form-section">
+    <button id="toggleDeletionHistory" class="btn toggle-btn">削除履歴を表示</button>
+    <div id="deletionHistorySection">
+      <h2>削除履歴</h2>
+      <table class="deletion-table">
+        <thead>
+          <tr>
+            <th>削除日時</th>
+            <th>取引種別</th>
+            <th>日付</th>
+            <th>班の名前</th>
+            <th>数量</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="deletionHistoryBody"></tbody>
+      </table>
+    </div>
+  </div>
+  
+  <script>
+    /********************
+     * データ・ストレージ関連
+     ********************/
+    let managedItems = JSON.parse(localStorage.getItem("managedItems"));
+    if (!Array.isArray(managedItems) || managedItems.length === 0) {
+      managedItems = ["paper", "other"];
+    }
+    
+    const itemSelect = document.getElementById('itemSelect');
+    let currentItemKey = "";
+    
+    const inventoryCountEl = document.getElementById('inventoryCount');
+    const transactionBody = document.getElementById('transactionBody');
+    const groupListEl = document.getElementById('groupList');
+    const groupSelectEl = document.getElementById('groupSelect');
+    const itemListEl = document.getElementById('itemList');
+    const exportExcelBtn = document.getElementById('exportExcel');
+    const deletionHistoryBody = document.getElementById('deletionHistoryBody');
+    const toggleDeletionHistoryBtn = document.getElementById('toggleDeletionHistory');
+    const deletionHistorySection = document.getElementById('deletionHistorySection');
+    
+    let currentInventory = 0;
+    let groupNames = [];
+    let transactionHistory = [];
+    let deletionHistory = [];
+    
+    function getKeysForItem(item) {
+      return {
+        inventoryKey: "currentInventory_" + item,
+        groupsKey: "groupNames_" + item,
+        transactionsKey: "transactionHistory_" + item,
+        deletionKey: "deletionHistory_" + item
+      };
+    }
+    
+    function saveManagedItems() {
+      localStorage.setItem("managedItems", JSON.stringify(managedItems));
+    }
+    
+    function loadData() {
+      const keys = getKeysForItem(currentItemKey);
+      currentInventory = parseInt(localStorage.getItem(keys.inventoryKey), 10);
+      if (isNaN(currentInventory)) currentInventory = 0;
+      
+      groupNames = JSON.parse(localStorage.getItem(keys.groupsKey));
+      if (!Array.isArray(groupNames)) {
+        groupNames = ["庄野班", "三輪班", "長崎班", "穴澤班", "植草班", "平松班", "長岡班"];
+      }
+      
+      transactionHistory = JSON.parse(localStorage.getItem(keys.transactionsKey));
+      if (!Array.isArray(transactionHistory)) {
+        transactionHistory = [];
+      }
+      
+      deletionHistory = JSON.parse(localStorage.getItem(keys.deletionKey));
+      if (!Array.isArray(deletionHistory)) {
+        deletionHistory = [];
+      }
+      
+      inventoryCountEl.textContent = currentInventory;
+      updateGroupList();
+      updateGroupSelect();
+      updateTransactionHistory();
+      updateDeletionHistory();
+    }
+    
+    function saveData() {
+      const keys = getKeysForItem(currentItemKey);
+      localStorage.setItem(keys.inventoryKey, currentInventory);
+      localStorage.setItem(keys.groupsKey, JSON.stringify(groupNames));
+      localStorage.setItem(keys.transactionsKey, JSON.stringify(transactionHistory));
+      localStorage.setItem(keys.deletionKey, JSON.stringify(deletionHistory));
+    }
+    
+    /********************
+     * 表示・更新関連
+     ********************/
+    function updateTransactionHistory() {
+      transactionBody.innerHTML = "";
+      transactionHistory.forEach((item, index) => {
+        const newRow = document.createElement('tr');
+        newRow.innerHTML = `
+          <td>${item.type}</td>
+          <td>${item.date}</td>
+          <td>${item.group || '－'}</td>
+          <td>${item.amount > 0 ? (item.type === "入荷" ? '+' : '-') + item.amount : item.amount}</td>
+          <td><button class="btn btn-danger" onclick="deleteTransaction(${index})">削除</button></td>
+        `;
+        transactionBody.appendChild(newRow);
+      });
+    }
+    
+    // 削除履歴更新：復元ボタンと「完全削除」ボタンを配置
+    function updateDeletionHistory() {
+      deletionHistoryBody.innerHTML = "";
+      deletionHistory.forEach((record, index) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${record.deletedAt}</td>
+          <td>${record.type}</td>
+          <td>${record.date}</td>
+          <td>${record.group || '－'}</td>
+          <td>${record.amount}</td>
+          <td>
+            <button class="btn" onclick="restoreTransaction(${index})">復元</button>
+            <button class="btn btn-danger" onclick="deleteDeletionRecord(${index})">削除</button>
+          </td>
+        `;
+        deletionHistoryBody.appendChild(row);
+      });
+    }
+    
+    // 完全削除（確認付き）
+    function deleteDeletionRecord(index) {
+      if (!confirm('本当にこの削除履歴を完全に削除してよろしいですか？')) return;
+      deletionHistory.splice(index, 1);
+      updateDeletionHistory();
+      saveData();
+    }
+    
+    function updateGroupList() {
+      groupListEl.innerHTML = "";
+      groupNames.forEach((name, index) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${name}</td>
+          <td><button class="btn btn-danger" onclick="deleteGroup(${index})">削除</button></td>
+        `;
+        groupListEl.appendChild(row);
+      });
+    }
+    
+    function updateGroupSelect() {
+      groupSelectEl.innerHTML = `<option value="" disabled selected>班を選択</option>`;
+      groupNames.forEach(name => {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        groupSelectEl.appendChild(option);
+      });
+    }
+    
+    function updateItemSelect() {
+      itemSelect.innerHTML = "";
+      managedItems.forEach(item => {
+        const option = document.createElement('option');
+        option.value = item;
+        option.textContent = item;
+        itemSelect.appendChild(option);
+      });
+    }
+    
+    function updateItemManagement() {
+      itemListEl.innerHTML = "";
+      managedItems.forEach((item, index) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${item}</td>
+          <td><button class="btn btn-danger" onclick="deleteItem(${index})">削除</button></td>
+        `;
+        itemListEl.appendChild(row);
+      });
+    }
+    
+    function initItem() {
+      loadData();
+    }
+    
+    /********************
+     * イベントリスナー
+     ********************/
+    itemSelect.addEventListener('change', function() {
+      currentItemKey = this.value;
+      initItem();
+    });
+    
+    updateItemSelect();
+    updateItemManagement();
+    currentItemKey = itemSelect.value || managedItems[0];
+    if (!itemSelect.value) {
+      const option = document.createElement('option');
+      option.value = currentItemKey;
+      option.textContent = currentItemKey;
+      itemSelect.appendChild(option);
+    }
+    initItem();
+    
+    document.getElementById('setInventoryForm').addEventListener('submit', function(event) {
+      event.preventDefault();
+      const newInventory = parseInt(document.getElementById('initialInventory').value, 10);
+      if (isNaN(newInventory) || newInventory < 0) return;
+      currentInventory = newInventory;
+      inventoryCountEl.textContent = currentInventory;
+      saveData();
+    });
+    
+    document.getElementById('addGroupForm').addEventListener('submit', function(event) {
+      event.preventDefault();
+      const newGroup = document.getElementById('newGroupName').value.trim();
+      if (newGroup && !groupNames.includes(newGroup)) {
+        groupNames.push(newGroup);
+        updateGroupList();
+        updateGroupSelect();
+        saveData();
+      }
+      this.reset();
+    });
+    
+    document.getElementById('restockForm').addEventListener('submit', function(event) {
+      event.preventDefault();
+      const restockAmount = parseInt(document.getElementById('restockAmount').value, 10);
+      const restockDate = document.getElementById('restockDate').value;
+      currentInventory += restockAmount;
+      inventoryCountEl.textContent = currentInventory;
+      const newTransaction = {
+        type: "入荷",
+        date: restockDate,
+        group: "",
+        amount: restockAmount
+      };
+      transactionHistory.push(newTransaction);
+      updateTransactionHistory();
+      saveData();
+      this.reset();
+    });
+    
+    document.getElementById('checkoutForm').addEventListener('submit', function(event) {
+      event.preventDefault();
+      const groupName = groupSelectEl.value;
+      const checkoutDate = document.getElementById('checkoutDate').value;
+      const checkoutAmount = parseInt(document.getElementById('checkoutAmount').value, 10);
+      
+      if (checkoutAmount > currentInventory) {
+        alert('在庫が不足しています。');
+        return;
+      }
+      
+      currentInventory -= checkoutAmount;
+      inventoryCountEl.textContent = currentInventory;
+      const newTransaction = {
+        type: "持ち出し",
+        date: checkoutDate,
+        group: groupName,
+        amount: checkoutAmount
+      };
+      transactionHistory.push(newTransaction);
+      updateTransactionHistory();
+      saveData();
+      this.reset();
+    });
+    
+    function deleteTransaction(index) {
+      if (!confirm('本当にこの取引を削除してよろしいですか？')) return;
+      const item = transactionHistory[index];
+      if (item.type === "入荷") {
+        currentInventory -= item.amount;
+      } else if (item.type === "持ち出し") {
+        currentInventory += item.amount;
+      }
+      transactionHistory.splice(index, 1);
+      inventoryCountEl.textContent = currentInventory;
+      updateTransactionHistory();
+      
+      const deletionRecord = {
+        deletedAt: new Date().toLocaleString(),
+        type: item.type,
+        date: item.date,
+        group: item.group || '－',
+        amount: item.amount
+      };
+      deletionHistory.push(deletionRecord);
+      updateDeletionHistory();
+      
+      saveData();
+    }
+    
+    function restoreTransaction(deletionIndex) {
+      if (!confirm('この削除履歴を復元して取引履歴に戻しますか？')) return;
+      const record = deletionHistory[deletionIndex];
+      if (record.type === "入荷") {
+        currentInventory += record.amount;
+      } else if (record.type === "持ち出し") {
+        currentInventory -= record.amount;
+      }
+      transactionHistory.push({
+        type: record.type,
+        date: record.date,
+        group: record.group,
+        amount: record.amount
+      });
+      deletionHistory.splice(deletionIndex, 1);
+      inventoryCountEl.textContent = currentInventory;
+      updateTransactionHistory();
+      updateDeletionHistory();
+      saveData();
+    }
+    
+    function deleteGroup(index) {
+      if (!confirm('本当にこの班名を削除してよろしいですか？')) return;
+      groupNames.splice(index, 1);
+      updateGroupList();
+      updateGroupSelect();
+      saveData();
+    }
+    
+    document.getElementById('manageItemsForm').addEventListener('submit', function(event) {
+      event.preventDefault();
+      const newItem = document.getElementById('newItemName').value.trim();
+      if (newItem && !managedItems.includes(newItem)) {
+        managedItems.push(newItem);
+        updateItemSelect();
+        updateItemManagement();
+        saveManagedItems();
+      }
+      this.reset();
+    });
+    
+    function deleteItem(index) {
+      if (!confirm('本当にこのアイテムを削除してよろしいですか？')) return;
+      const itemToDelete = managedItems[index];
+      const keys = getKeysForItem(itemToDelete);
+      localStorage.removeItem(keys.inventoryKey);
+      localStorage.removeItem(keys.groupsKey);
+      localStorage.removeItem(keys.transactionsKey);
+      localStorage.removeItem(keys.deletionKey);
+  
+      managedItems.splice(index, 1);
+      if (currentItemKey === itemToDelete) {
+        currentItemKey = managedItems[0] || "";
+      }
+      updateItemSelect();
+      updateItemManagement();
+      initItem();
+      saveManagedItems();
+    }
+    
+    // Excel出力（シート分割出力）
+    exportExcelBtn.addEventListener('click', function() {
+      const transactionHeader = [["取引種別", "日付", "班の名前", "数量"]];
+      const transactionData = transactionHistory.map(item => [
+        item.type,
+        item.date,
+        item.group || '－',
+        item.amount
+      ]);
+      const transactionSheet = XLSX.utils.aoa_to_sheet(transactionHeader.concat(transactionData));
+      
+      const deletionHeader = [["削除日時", "取引種別", "日付", "班の名前", "数量"]];
+      const deletionData = deletionHistory.map(record => [
+        record.deletedAt,
+        record.type,
+        record.date,
+        record.group || '－',
+        record.amount
+      ]);
+      const deletionSheet = XLSX.utils.aoa_to_sheet(deletionHeader.concat(deletionData));
+      
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, transactionSheet, "取引履歴");
+      XLSX.utils.book_append_sheet(wb, deletionSheet, "削除履歴");
+      
+      XLSX.writeFile(wb, "取引・削除履歴.xlsx");
+    });
+    
+    /********************
+     * トグル処理と背景色の切替
+     ********************/
+    document.getElementById('toggleItemManagement').addEventListener('click', function() {
+      const section = document.getElementById('itemManagementSection');
+      if (section.style.display === "none" || section.style.display === "") {
+        section.style.display = "block";
+        this.textContent = "管理対象アイテム管理を隠す";
+        this.style.backgroundColor = varToggleShow();
+      } else {
+        section.style.display = "none";
+        this.textContent = "管理対象アイテム管理を表示";
+        this.style.backgroundColor = varToggleHide();
+      }
+    });
+    
+    document.getElementById('toggleGroupManagement').addEventListener('click', function() {
+      const section = document.getElementById('groupManagementSection');
+      if (section.style.display === "none" || section.style.display === "") {
+        section.style.display = "block";
+        this.textContent = "班名管理を隠す";
+        this.style.backgroundColor = varToggleShow();
+      } else {
+        section.style.display = "none";
+        this.textContent = "班名管理を表示";
+        this.style.backgroundColor = varToggleHide();
+      }
+    });
+    
+    document.getElementById('toggleInventoryInitial').addEventListener('click', function() {
+      if (!window.isAdminAuthenticated) {
+        const pwd = prompt("管理者パスワードを入力してください。");
+        if (pwd === "admin123") {
+          window.isAdminAuthenticated = true;
+        } else {
+          alert("管理者権限がありません。");
+          return;
+        }
+      }
+      const section = document.getElementById('inventoryInitialSection');
+      if (section.style.display === "none" || section.style.display === "") {
+        section.style.display = "block";
+        this.textContent = "在庫初期設定を隠す";
+        this.style.backgroundColor = varToggleShow();
+      } else {
+        section.style.display = "none";
+        this.textContent = "在庫初期設定を表示";
+        this.style.backgroundColor = varToggleHide();
+      }
+    });
+    
+    toggleDeletionHistoryBtn.addEventListener('click', function() {
+      if (deletionHistorySection.style.display === "none" || deletionHistorySection.style.display === "") {
+        deletionHistorySection.style.display = "block";
+        this.textContent = "削除履歴を隠す";
+        this.style.backgroundColor = varToggleShow();
+      } else {
+        deletionHistorySection.style.display = "none";
+        this.textContent = "削除履歴を表示";
+        this.style.backgroundColor = varToggleHide();
+      }
+    });
+    
+    function varToggleShow() {
+      return "#27ae60"; // 表示時は緑
+    }
+    function varToggleHide() {
+      return "#3498db"; // 非表示時はブルー
+    }
+  </script>
+</body>
+</html>
